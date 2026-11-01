@@ -1,0 +1,11 @@
+.Rhistory
+.RData
+.Rproj.user/
+*.html
+*.pdf
+*_files/
+figure/
+data/*.csv
+!data/README.md
+
+
