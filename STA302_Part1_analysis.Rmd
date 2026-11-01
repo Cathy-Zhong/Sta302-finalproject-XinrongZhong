@@ -100,7 +100,7 @@ coefficient_table$p_value <- format.pval(
 
 knitr::kable(
   coefficient_table,
-  caption = "Preliminary model estimates with standard errors and 95% confidence intervals."
+  caption = "Preliminary multiple linear regression estimates for ADR, with standard errors and 95% confidence intervals."
 )
 ```
 
