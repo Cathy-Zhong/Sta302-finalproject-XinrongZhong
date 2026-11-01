@@ -464,7 +464,7 @@ par(old_par)
 | Normally distributed errors | Not reasonable for this preliminary model. The residual histogram is right-skewed and the QQ plot departs substantially from the reference line, especially in the upper tail. |
 | No highly unusual observations | Potential unusual observations are present, including very large standardized residuals and a small high-leverage group. Source records should be checked; they should not be automatically deleted. |
 
-Per the Part 1 instructions, this file diagnoses rather than corrects the assumption violations. Transformations, nonlinear terms, alternative variance handling, and sensitivity analyses belong in the later analysis plan and should be implemented only after the group freezes the data-cleaning decisions.
+Per the Part 1 instructions, this file diagnoses rather than corrects the assumption violations. Transformations, nonlinear terms, alternative variance handling, and sensitivity analyses should be considered only after the group freezes the data-cleaning decisions.
 
 # Reproducibility information
 
