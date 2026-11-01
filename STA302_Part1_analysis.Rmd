@@ -138,21 +138,9 @@ plot(
 )
 abline(h = 0, col = "red")
 
-plot(
-  seq_along(model_residuals),
-  model_residuals,
-  xlab = "Observation order",
-  ylab = "Residual",
-  main = "(b) Residuals in data order",
-  pch = 16,
-  cex = 0.25,
-  col = rgb(0, 0, 0, 0.15)
-)
-abline(h = 0, col = "red")
-
 qqnorm(
   model_residuals,
-  main = "(c) Normal Q-Q",
+  main = "(b) Normal Q-Q",
   pch = 16,
   cex = 0.3,
   col = rgb(0, 0, 0, 0.15)
@@ -162,4 +150,4 @@ qqline(model_residuals, col = "red")
 par(old_par)
 ```
 
-The residuals-versus-fitted plot shows systematic structure and increasing spread, so the linearity and constant variance assumptions are questionable. The residuals also show long runs above and below zero in data order, making the uncorrelated-errors assumption questionable. The Q-Q plot departs strongly from the line in both tails, so the normality assumption is not reasonable. Following the Part 1 instructions, we identify these violations without correcting them in the preliminary model.
+In our preliminary model,systematic structure and increasing spread can be seen in the residuals-fitted plot, shows the linearity and constant variance assumptions are questionable. The Q-Q plot is heavy tailed, gives the evidence that the normality assumption may not be reasonable. 
