@@ -14,7 +14,8 @@ Antonio, de Almeida, and Nunes (2019) introduced the datasets and discussed thei
 
 ## Files
 
-- `STA302_Part1_analysis.Rmd`: imports the original data, reproduces the 73,004-row cleaning pipeline, fits the preliminary model, reports estimates and 95% confidence intervals, and performs residual diagnostics.
+- `STA302_Part1_analysis.Rmd`: imports the original data, reproduces the cleaning pipeline, removes 31 zero-recorded-guest records, fits the preliminary model on 72,973 observations, reports estimates and 95% confidence intervals, and performs residual diagnostics.
+- `data/hotels_clean_no_zero_guests.csv`: the 72,973-row, 24-variable analysis dataset after the zero-recorded-guest exclusion.
 - `data/README.md`: explains where to place the original CSV.
 - `.gitignore`: prevents large or generated files from being committed accidentally.
 
@@ -24,10 +25,9 @@ Antonio, de Almeida, and Nunes (2019) introduced the datasets and discussed thei
 2. Open `STA302_Part1_analysis.Rmd` in RStudio.
 3. Knit the file from the repository root.
 
-The Rmd uses base R and `knitr`. It does not silently delete exact duplicates, the 31 zero-recorded-guest bookings, or low ADR observations. Those records are reported for team review. If the Data Lead changes the cleaning decisions, update the cleaning code, the row-count table, and all reported model results together.
+The Rmd uses base R and `knitr`. It explicitly removes the 31 zero-recorded-guest bookings under the updated group decision. It does not silently delete exact duplicate-looking records or low ADR observations. If the Data Lead changes another cleaning decision, update the cleaning code, the row-count table, the committed analysis CSV, and all reported model results together.
 
 ## Source
 
 Antonio, N., de Almeida, A., & Nunes, L. (2019). Hotel booking demand datasets. *Data in Brief, 22*, 41–49. https://doi.org/10.1016/j.dib.2018.11.126
-
 

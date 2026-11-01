@@ -6,6 +6,6 @@
 *_files/
 figure/
 data/*.csv
+!data/hotels_clean_no_zero_guests.csv
 !data/README.md
-
 

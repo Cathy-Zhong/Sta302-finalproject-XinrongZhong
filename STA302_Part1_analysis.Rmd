@@ -22,11 +22,11 @@ The source data describe bookings at one resort hotel in the Algarve and one cit
 
 The working research question is: among non-cancelled bookings with positive ADR at these two properties, how is lead time associated with ADR, and does this association differ between the properties after adjustment for arrival timing, length of stay, party composition, meal plan, reserved room type, market segment, and customer type?
 
-The model and diagnostics remain preliminary. In particular, 31 positive-stay records report zero adults, children, and babies; they are retained pending confirmation from the Data Lead.
+The model and diagnostics remain preliminary. Thirty-one positive-stay records that report zero adults, children, and babies are excluded under the group's updated cleaning rule.
 
 # Import and reproduce the cleaned analysis data
 
-The cleaning pipeline below reproduces the supplied 73,004-row, 24-variable cleaned file directly from the original data. No exact duplicate-looking rows are removed because distinct bookings can become identical after identifying and date-detail variables are excluded.
+The cleaning pipeline below first reproduces the supplied 73,004-row, 24-variable cleaned file directly from the original data and then removes the 31 records with no recorded guests, leaving 72,973 observations. No exact duplicate-looking rows are removed because distinct bookings can become identical after identifying and date-detail variables are excluded.
 
 ```{r data-import-cleaning}
 candidate_paths <- c(
@@ -78,6 +78,13 @@ analysis_rows <- step_valid_room[
   step_valid_room$distribution_channel != "Undefined",
 ]
 
+step_valid_categories <- analysis_rows
+analysis_rows <- step_valid_categories[
+  step_valid_categories$adults +
+    step_valid_categories$children +
+    step_valid_categories$babies > 0,
+]
+
 analysis_rows$meal[analysis_rows$meal == "Undefined"] <- "SC"
 analysis_rows$is_repeated_guest <- ifelse(
   analysis_rows$is_repeated_guest == 1,
@@ -113,7 +120,8 @@ cleaning_flow <- data.frame(
     "Retain positive ADR",
     "Remove country coded NULL",
     "Remove reserved room type L",
-    "Remove undefined distribution channel"
+    "Remove undefined distribution channel",
+    "Remove zero-recorded-guest bookings"
   ),
   Rows_remaining = c(
     nrow(raw_hotels),
@@ -121,6 +129,7 @@ cleaning_flow <- data.frame(
     nrow(step_positive_adr),
     nrow(step_known_country),
     nrow(step_valid_room),
+    nrow(step_valid_categories),
     nrow(analysis_rows)
   )
 )
@@ -128,7 +137,7 @@ cleaning_flow <- data.frame(
 knitr::kable(cleaning_flow, align = c("l", "r"))
 ```
 
-The source paper defines ADR as the sum of lodging transactions divided by the number of staying nights. `country == "NULL"` is removed because domestic/international status cannot be constructed, `Undefined` meal is combined with `SC` because both indicate no meal package in this data preparation, and two invalid/undefined categorical levels are excluded. These choices reproduce the supplied cleaned data; their substantive rationale must remain consistent with the Data Lead's data-description section.
+The source paper defines ADR as the sum of lodging transactions divided by the number of staying nights. `country == "NULL"` is removed because domestic/international status cannot be constructed, `Undefined` meal is combined with `SC` because both indicate no meal package in this data preparation, and two invalid/undefined categorical levels are excluded. The final rule removes records with `adults + children + babies == 0` because they do not describe a booking with a recorded guest. These choices must remain consistent with the Data Lead's data-description section.
 
 ## Audit checks
 
@@ -138,7 +147,7 @@ audit_results <- data.frame(
     "Rows", "Columns", "Missing values",
     "Additional copies of identical 24-field rows",
     "Rows belonging to identical 24-field groups",
-    "Positive-stay records with zero recorded guests",
+    "Records with zero recorded guests after exclusion",
     "Zero-night records", "ADR at most one euro"
   ),
   Result = c(
@@ -159,13 +168,13 @@ audit_results <- data.frame(
 
 knitr::kable(audit_results, align = c("l", "r"))
 
-stopifnot(nrow(hotels) == 73004L)
+stopifnot(nrow(hotels) == 72973L)
 stopifnot(ncol(hotels) == 24L)
 stopifnot(sum(is.na(hotels)) == 0L)
 stopifnot(all(hotels$adr > 0))
 ```
 
-The audit reports questionable records rather than silently deleting them. In particular, the 31 zero-recorded-guest records and 13 very low ADR observations stay in the preliminary model until the group documents a defensible rule.
+The audit makes the zero-recorded-guest exclusion explicit. Very low ADR observations remain in the preliminary model because a separate exclusion rule has not been adopted.
 
 # Variable coding
 
@@ -466,4 +475,3 @@ sessionInfo()
 # Reference
 
 Antonio, N., de Almeida, A., & Nunes, L. (2019). Hotel booking demand datasets. *Data in Brief, 22*, 41--49. https://doi.org/10.1016/j.dib.2018.11.126
-
