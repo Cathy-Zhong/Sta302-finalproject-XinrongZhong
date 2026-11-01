@@ -1,5 +1,5 @@
 ---
-title: "Preliminary Linear Regression Model and Diagnostics"
+title: "Preliminary Results"
 author: "Xinrong Zhong"
 output: html_document
 ---
@@ -9,148 +9,129 @@ knitr::opts_chunk$set(
   echo = FALSE,
   warning = FALSE,
   message = FALSE,
-  fig.width = 10,
-  fig.height = 4,
+  fig.align = "center",
   dpi = 150
 )
 ```
 
-# Research question
-
-Among non-cancelled bookings with positive ADR at the two hotels, how is lead time associated with ADR, and does this association differ between the hotels after controlling for arrival timing, length of stay, party composition, meal plan, reserved room type, market segment, and customer type?
-
-# Temporary data import
-
-**DELETE THIS SECTION BEFORE GROUP SUBMISSION.** It is only used while I work on Part C. After Part A is added to the group Rmd, the cleaned data from Part A should be called `hotels`.
-
-```{r temporary-data-import, include=FALSE}
-# DELETE BEFORE GROUP SUBMISSION: replace with Part A's data section.
-hotels <- read.csv(
-  file.path("data", "hotels_clean_no_zero_guests.csv"),
+```{r data-import, include=FALSE}
+# Delete this chunk after merging with A's Rmd.
+clean <- read.csv(
+  file.path("data", "hotels_clean.csv"),
   stringsAsFactors = FALSE
 )
 ```
 
-# Variable coding
-
-```{r variable-coding}
-hotels$hotel <- relevel(factor(hotels$hotel), ref = "City Hotel")
-hotels$arrival_date_year <- relevel(
-  factor(hotels$arrival_date_year),
-  ref = "2015"
-)
-hotels$arrival_date_month <- factor(
-  hotels$arrival_date_month,
+```{r variable-coding, include=FALSE}
+model_data <- clean
+model_data$hotel <- relevel(factor(model_data$hotel), ref = "City Hotel")
+model_data$arrival_date_month <- factor(
+  model_data$arrival_date_month,
   levels = month.name
 )
-hotels$meal <- relevel(factor(hotels$meal), ref = "BB")
-hotels$reserved_room_type <- relevel(
-  factor(hotels$reserved_room_type),
-  ref = "A"
-)
-hotels$market_segment <- relevel(
-  factor(hotels$market_segment),
+model_data$meal <- relevel(factor(model_data$meal), ref = "BB")
+model_data$market_segment <- relevel(
+  factor(model_data$market_segment),
   ref = "Online TA"
 )
-hotels$customer_type <- relevel(
-  factor(hotels$customer_type),
+model_data$customer_type <- relevel(
+  factor(model_data$customer_type),
   ref = "Transient"
 )
+model_data$reserved_room_type <- relevel(
+  factor(model_data$reserved_room_type),
+  ref = "A"
+)
+model_data$is_repeated_guest <- relevel(
+  factor(model_data$is_repeated_guest),
+  ref = "No"
+)
+model_data$domestic <- relevel(
+  factor(model_data$domestic),
+  ref = "International"
+)
 ```
-
-The reference groups are City Hotel, 2015, January, BB meal, room type A, Online TA, and Transient customer.
 
 # Preliminary model
 
-The model has eleven predictors. The interaction tests whether the association between lead time and ADR differs between the two hotels.
-
-```{r model}
-preliminary_model <- lm(
-  adr ~ lead_time * hotel +
-    arrival_date_year + arrival_date_month +
-    stays_in_weekend_nights + stays_in_week_nights +
-    adults + children + meal + reserved_room_type +
-    market_segment + customer_type,
-  data = hotels
+```{r model, include=FALSE}
+prelim_predictors <- c(
+  "lead_time", "hotel", "arrival_date_month",
+  "stays_in_weekend_nights", "stays_in_week_nights",
+  "adults", "children", "meal", "market_segment",
+  "customer_type", "reserved_room_type", "is_repeated_guest",
+  "total_of_special_requests", "domestic"
 )
+
+model_formula <- reformulate(
+  c(prelim_predictors, "lead_time:hotel"),
+  response = "adr"
+)
+
+model <- lm(model_formula, data = model_data)
+model_summary <- summary(model)
 ```
 
-## Model estimates
+We fitted a preliminary multiple linear regression to `r format(nobs(model), big.mark = ",")` completed bookings. The model included 14 predictors and a lead-time-by-hotel interaction.
 
-```{r coefficient-table}
-model_coefs <- coef(summary(preliminary_model))
-model_ci <- confint(preliminary_model)
+```{r model-table}
+coefficient_matrix <- coef(model_summary)
+confidence_intervals <- confint(model)
 
 coefficient_table <- data.frame(
-  Term = rownames(model_coefs),
-  Estimate = model_coefs[, "Estimate"],
-  SE = model_coefs[, "Std. Error"],
-  Lower_95_CI = model_ci[, 1],
-  Upper_95_CI = model_ci[, 2],
+  Term = rownames(coefficient_matrix),
+  Estimate = coefficient_matrix[, "Estimate"],
+  SE = coefficient_matrix[, "Std. Error"],
+  Lower_95_CI = confidence_intervals[, 1],
+  Upper_95_CI = confidence_intervals[, 2],
+  p_value = coefficient_matrix[, "Pr(>|t|)"],
   row.names = NULL
 )
 
-coefficient_table[, 2:5] <- round(coefficient_table[, 2:5], 4)
-knitr::kable(coefficient_table)
-```
+coefficient_table[, 2:5] <- round(coefficient_table[, 2:5], 3)
+coefficient_table$p_value <- format.pval(
+  coefficient_table$p_value,
+  digits = 3,
+  eps = 0.001
+)
 
-```{r model-fit-table}
-model_summary <- summary(preliminary_model)
-
-fit_table <- data.frame(
-  Measure = c(
-    "Observations",
-    "Residual standard error",
-    "R-squared",
-    "Adjusted R-squared"
-  ),
-  Value = c(
-    nobs(preliminary_model),
-    round(sigma(preliminary_model), 2),
-    round(model_summary$r.squared, 4),
-    round(model_summary$adj.r.squared, 4)
+knitr::kable(
+  coefficient_table,
+  caption = paste(
+    "Preliminary multiple linear regression estimates for ADR,",
+    "with standard errors and 95% confidence intervals."
   )
 )
-
-knitr::kable(fit_table)
 ```
 
-## Lead-time slopes
-
-```{r lead-time-slopes}
-model_estimates <- coef(preliminary_model)
+```{r main-results, include=FALSE}
+model_estimates <- coef(model)
 interaction_term <- "lead_time:hotelResort Hotel"
 
-city_slope <- model_estimates["lead_time"]
-resort_slope <- city_slope + model_estimates[interaction_term]
+city_slope <- unname(model_estimates["lead_time"])
+interaction_estimate <- unname(model_estimates[interaction_term])
+resort_slope <- city_slope + interaction_estimate
 
-slope_table <- data.frame(
-  Hotel = c("City Hotel", "Resort Hotel"),
-  Estimated_change_in_ADR = round(c(city_slope, resort_slope), 4)
-)
-
-knitr::kable(slope_table)
+city_ci <- confidence_intervals["lead_time", ]
+interaction_ci <- confidence_intervals[interaction_term, ]
 ```
 
-The lead-time coefficient is the estimated change in mean ADR for one additional day of lead time at the City Hotel, holding the other variables fixed. The interaction coefficient is the difference between the Resort Hotel and City Hotel slopes. These are associations, not causal effects.
+At the City Hotel, one additional day of lead time was associated with a `r abs(round(city_slope, 4))`-euro lower mean ADR (95% CI: `r round(city_ci[1], 4)`, `r round(city_ci[2], 4)`), holding the other predictors fixed. The interaction estimate was `r round(interaction_estimate, 4)` euros (95% CI: `r round(interaction_ci[1], 4)`, `r round(interaction_ci[2], 4)`), giving a Resort Hotel slope of `r round(resort_slope, 4)` euros per day. Longer lead times were associated with lower ADR at both hotels, but the negative association was weaker at the Resort Hotel. The significant interaction was consistent with Abrate et al. (2012), who found that inter-temporal hotel pricing varies with hotel and customer characteristics. The adjusted R-squared was `r round(model_summary$adj.r.squared, 4)`. These estimates describe associations, not causal effects.
 
-# Residual diagnostics
+# Residual analysis
 
-```{r diagnostic-values, include=FALSE}
-fitted_values <- fitted(preliminary_model)
-standardized_residuals <- rstandard(preliminary_model)
-leverage_values <- hatvalues(preliminary_model)
-```
+```{r residual-plots, fig.width=12, fig.height=4, fig.cap="Residual plots for the preliminary model: (a) residuals versus fitted ADR, (b) residuals in data order, and (c) the normal Q-Q plot."}
+model_residuals <- residuals(model)
+fitted_values <- fitted(model)
 
-```{r main-diagnostics, fig.width=12, fig.height=4, fig.cap="Residual plots for linearity, constant variance, and normality."}
 old_par <- par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
 
 plot(
   fitted_values,
-  standardized_residuals,
+  model_residuals,
   xlab = "Fitted ADR",
-  ylab = "Standardized residual",
-  main = "Residuals vs fitted",
+  ylab = "Residual",
+  main = "(a) Residuals vs fitted",
   pch = 16,
   cex = 0.3,
   col = rgb(0, 0, 0, 0.15)
@@ -158,68 +139,27 @@ plot(
 abline(h = 0, col = "red")
 
 plot(
-  fitted_values,
-  sqrt(abs(standardized_residuals)),
-  xlab = "Fitted ADR",
-  ylab = "Square root of |standardized residual|",
-  main = "Scale-location",
-  pch = 16,
-  cex = 0.3,
-  col = rgb(0, 0, 0, 0.15)
-)
-
-qqnorm(
-  standardized_residuals,
-  main = "Normal Q-Q",
-  pch = 16,
-  cex = 0.3,
-  col = rgb(0, 0, 0, 0.15)
-)
-qqline(standardized_residuals, col = "red")
-
-par(old_par)
-```
-
-```{r other-diagnostics, fig.width=10, fig.height=4, fig.cap="Residual plots for independence and unusual observations."}
-old_par <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
-
-plot(
-  seq_along(standardized_residuals),
-  standardized_residuals,
+  seq_along(model_residuals),
+  model_residuals,
   xlab = "Observation order",
-  ylab = "Standardized residual",
-  main = "Residuals in data order",
+  ylab = "Residual",
+  main = "(b) Residuals in data order",
   pch = 16,
   cex = 0.25,
   col = rgb(0, 0, 0, 0.15)
 )
 abline(h = 0, col = "red")
 
-plot(
-  leverage_values,
-  standardized_residuals,
-  xlab = "Leverage",
-  ylab = "Standardized residual",
-  main = "Residuals vs leverage",
+qqnorm(
+  model_residuals,
+  main = "(c) Normal Q-Q",
   pch = 16,
   cex = 0.3,
   col = rgb(0, 0, 0, 0.15)
 )
-abline(h = 0, col = "red")
+qqline(model_residuals, col = "red")
 
 par(old_par)
 ```
 
-## Assumption assessment
-
-- **Linearity:** The residuals-versus-fitted plot shows a pattern, so the linear mean structure may not be adequate.
-- **Constant variance:** The residual spread changes with fitted ADR. This assumption does not appear reasonable.
-- **Normality:** The Q-Q plot departs from the line in the tails. Normality does not appear reasonable.
-- **Independence:** The residuals show runs in data order. However, row order is not the same as booking time, so independence cannot be confirmed from this plot alone.
-- **Unusual observations:** Some observations have large standardized residuals or high leverage. They should be checked later rather than automatically removed.
-
-The Part 1 analysis identifies these problems but does not correct them yet.
-
-# Preliminary result
-
-For the City Hotel, one additional day of lead time is associated with an estimated ADR change of `r round(city_slope, 4)` euros, holding the other predictors fixed. The estimated interaction is `r round(model_estimates[interaction_term], 4)`, so the corresponding Resort Hotel slope is `r round(resort_slope, 4)` euros per additional day. The model has an adjusted R-squared of `r round(model_summary$adj.r.squared, 4)`. Because several regression assumptions are questionable, these results should be treated as preliminary.
+The residuals-versus-fitted plot shows systematic structure and increasing spread, so the linearity and constant variance assumptions are questionable. The residuals also show long runs above and below zero in data order, making the uncorrelated-errors assumption questionable. The Q-Q plot departs strongly from the line in both tails, so the normality assumption is not reasonable. Following the Part 1 instructions, we identify these violations without correcting them in the preliminary model.
