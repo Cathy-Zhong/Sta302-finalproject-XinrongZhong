@@ -55,24 +55,27 @@ model_data$domestic <- relevel(
 # Preliminary model
 
 ```{r model, include=FALSE}
-prelim_predictors <- c(
-  "lead_time", "hotel", "arrival_date_month",
-  "stays_in_weekend_nights", "stays_in_week_nights",
-  "adults", "children", "meal", "market_segment",
-  "customer_type", "reserved_room_type", "is_repeated_guest",
-  "total_of_special_requests", "domestic"
+model <- lm(
+  adr ~ lead_time * hotel +
+    arrival_date_month +
+    stays_in_weekend_nights +
+    stays_in_week_nights +
+    adults +
+    children +
+    meal +
+    market_segment +
+    customer_type +
+    reserved_room_type +
+    is_repeated_guest +
+    total_of_special_requests +
+    domestic,
+  data = model_data
 )
 
-model_formula <- reformulate(
-  c(prelim_predictors, "lead_time:hotel"),
-  response = "adr"
-)
-
-model <- lm(model_formula, data = model_data)
 model_summary <- summary(model)
 ```
 
-We fitted a preliminary multiple linear regression to `r format(nobs(model), big.mark = ",")` completed bookings. The model included 14 predictors and a lead-time-by-hotel interaction.
+The preliminary multiple linear regression model included 14 predictors and a lead-time-by-hotel interaction.
 
 ```{r model-table}
 coefficient_matrix <- coef(model_summary)
@@ -97,10 +100,7 @@ coefficient_table$p_value <- format.pval(
 
 knitr::kable(
   coefficient_table,
-  caption = paste(
-    "Preliminary multiple linear regression estimates for ADR,",
-    "with standard errors and 95% confidence intervals."
-  )
+  caption = "Preliminary multiple linear regression estimates for ADR, with standard errors and 95% confidence intervals."
 )
 ```
 
@@ -120,7 +120,7 @@ At the City Hotel, one additional day of lead time was associated with a `r abs(
 
 # Residual analysis
 
-```{r residual-plots, fig.width=12, fig.height=4, fig.cap="Residual plots for the preliminary model: (a) residuals versus fitted ADR, (b) residuals in data order, and (c) the normal Q-Q plot."}
+```{r residual-plots, fig.width=12, fig.height=4, fig.cap="Residual plots for the preliminary model: (a) residuals versus fitted ADR, (b) residuals versus lead time, and (c) the normal Q-Q plot."}
 model_residuals <- residuals(model)
 fitted_values <- fitted(model)
 
@@ -138,9 +138,21 @@ plot(
 )
 abline(h = 0, col = "red")
 
+plot(
+  model_data$lead_time,
+  model_residuals,
+  xlab = "Lead time (days)",
+  ylab = "Residual",
+  main = "(b) Residuals vs lead time",
+  pch = 16,
+  cex = 0.3,
+  col = rgb(0, 0, 0, 0.15)
+)
+abline(h = 0, col = "red")
+
 qqnorm(
   model_residuals,
-  main = "(b) Normal Q-Q",
+  main = "(c) Normal Q-Q",
   pch = 16,
   cex = 0.3,
   col = rgb(0, 0, 0, 0.15)
@@ -150,4 +162,4 @@ qqline(model_residuals, col = "red")
 par(old_par)
 ```
 
-In our preliminary model,systematic structure and increasing spread can be seen in the residuals-fitted plot, shows the linearity and constant variance assumptions are questionable. The Q-Q plot is heavy tailed, gives the evidence that the normality assumption may not be reasonable. 
+In our preliminary model,systematic structure and increasing spread can be seen in the residuals-fitted and residuals-lead-time plots, shows the linearity and constant variance assumptions are questionable. The available data do not contain enough identifying information to verify the uncorrelated-errors assumption. The Q-Q plot is heavy tailed, gives the evidence that the normality assumption may not be reasonable. 
