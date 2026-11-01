@@ -5,473 +5,221 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-options(width = 120, scipen = 4)
 knitr::opts_chunk$set(
   echo = FALSE,
   warning = FALSE,
   message = FALSE,
-  fig.width = 9,
-  fig.height = 5,
+  fig.width = 10,
+  fig.height = 4,
   dpi = 150
 )
 ```
 
-# Scope and analysis status
+# Research question
 
-The source data describe bookings at one resort hotel in the Algarve and one city hotel in Lisbon, Portugal. The source article presents the datasets and discusses cancellation-prediction uses; this project instead studies a continuous response, average daily rate (ADR), with an explanatory multiple linear regression. The hotel indicator therefore compares these two properties and does not support generalization to all city and resort hotels.
+Among non-cancelled bookings with positive ADR at the two hotels, how is lead time associated with ADR, and does this association differ between the hotels after controlling for arrival timing, length of stay, party composition, meal plan, reserved room type, market segment, and customer type?
 
-The working research question is: among non-cancelled bookings with positive ADR at these two properties, how is lead time associated with ADR, and does this association differ between the properties after adjustment for arrival timing, length of stay, party composition, meal plan, reserved room type, market segment, and customer type?
+# Temporary data import
 
-The model and diagnostics remain preliminary. Thirty-one positive-stay records that report zero adults, children, and babies are excluded under the group's updated cleaning rule.
+**DELETE THIS SECTION BEFORE GROUP SUBMISSION.** It is only used while I work on Part C. After Part A is added to the group Rmd, the cleaned data from Part A should be called `hotels`.
 
-# Import and reproduce the cleaned analysis data
-
-The cleaning pipeline below first reproduces the supplied 73,004-row, 24-variable cleaned file directly from the original data and then removes the 31 records with no recorded guests, leaving 72,973 observations. No exact duplicate-looking rows are removed because distinct bookings can become identical after identifying and date-detail variables are excluded.
-
-```{r data-import-cleaning}
-candidate_paths <- c(
-  file.path("data", "raw", "hotels.csv"),
-  file.path("..", "data", "raw", "hotels.csv"),
-  file.path("data", "hotels.csv"),
-  file.path("..", "data", "hotels.csv"),
-  "hotels.csv"
+```{r temporary-data-import, include=FALSE}
+# DELETE BEFORE GROUP SUBMISSION: replace with Part A's data section.
+hotels <- read.csv(
+  file.path("data", "hotels_clean_no_zero_guests.csv"),
+  stringsAsFactors = FALSE
 )
-existing_paths <- candidate_paths[file.exists(candidate_paths)]
-
-if (length(existing_paths) == 0L) {
-  stop(
-    "hotels.csv was not found. Place the original file in data/hotels.csv ",
-    "or in the same folder as this Rmd file."
-  )
-}
-
-raw_hotels <- read.csv(
-  existing_paths[1L],
-  stringsAsFactors = FALSE,
-  check.names = FALSE
-)
-
-raw_hotels$source_row_id <- seq_len(nrow(raw_hotels))
-
-month_number <- match(
-  raw_hotels$arrival_date_month,
-  month.name
-)
-raw_hotels$arrival_date <- as.Date(sprintf(
-  "%04d-%02d-%02d",
-  raw_hotels$arrival_date_year,
-  month_number,
-  raw_hotels$arrival_date_day_of_month
-))
-
-step_noncancelled <- raw_hotels[raw_hotels$is_canceled == 0, ]
-step_positive_adr <- step_noncancelled[step_noncancelled$adr > 0, ]
-step_known_country <- step_positive_adr[
-  !is.na(step_positive_adr$country) &
-    step_positive_adr$country != "" &
-    step_positive_adr$country != "NULL",
-]
-step_valid_room <- step_known_country[
-  step_known_country$reserved_room_type != "L",
-]
-analysis_rows <- step_valid_room[
-  step_valid_room$distribution_channel != "Undefined",
-]
-
-step_valid_categories <- analysis_rows
-analysis_rows <- step_valid_categories[
-  step_valid_categories$adults +
-    step_valid_categories$children +
-    step_valid_categories$babies > 0,
-]
-
-analysis_rows$meal[analysis_rows$meal == "Undefined"] <- "SC"
-analysis_rows$is_repeated_guest <- ifelse(
-  analysis_rows$is_repeated_guest == 1,
-  "Yes",
-  "No"
-)
-analysis_rows$domestic <- ifelse(
-  analysis_rows$country == "PRT",
-  "Domestic",
-  "International"
-)
-
-analysis_variables <- c(
-  "hotel", "lead_time", "arrival_date_year", "arrival_date_month",
-  "stays_in_weekend_nights", "stays_in_week_nights", "adults",
-  "children", "babies", "meal", "market_segment",
-  "distribution_channel", "is_repeated_guest",
-  "previous_cancellations", "previous_bookings_not_canceled",
-  "reserved_room_type", "booking_changes", "deposit_type",
-  "days_in_waiting_list", "customer_type", "adr",
-  "required_car_parking_spaces", "total_of_special_requests",
-  "domestic"
-)
-
-hotels <- analysis_rows[analysis_variables]
-source_row_id <- analysis_rows$source_row_id
-arrival_date <- analysis_rows$arrival_date
-
-cleaning_flow <- data.frame(
-  Step = c(
-    "Original records",
-    "Retain non-cancelled bookings",
-    "Retain positive ADR",
-    "Remove country coded NULL",
-    "Remove reserved room type L",
-    "Remove undefined distribution channel",
-    "Remove zero-recorded-guest bookings"
-  ),
-  Rows_remaining = c(
-    nrow(raw_hotels),
-    nrow(step_noncancelled),
-    nrow(step_positive_adr),
-    nrow(step_known_country),
-    nrow(step_valid_room),
-    nrow(step_valid_categories),
-    nrow(analysis_rows)
-  )
-)
-
-knitr::kable(cleaning_flow, align = c("l", "r"))
 ```
-
-The source paper defines ADR as the sum of lodging transactions divided by the number of staying nights. `country == "NULL"` is removed because domestic/international status cannot be constructed, `Undefined` meal is combined with `SC` because both indicate no meal package in this data preparation, and two invalid/undefined categorical levels are excluded. The final rule removes records with `adults + children + babies == 0` because they do not describe a booking with a recorded guest. These choices must remain consistent with the Data Lead's data-description section.
-
-## Audit checks
-
-```{r data-audit}
-audit_results <- data.frame(
-  Check = c(
-    "Rows", "Columns", "Missing values",
-    "Additional copies of identical 24-field rows",
-    "Rows belonging to identical 24-field groups",
-    "Records with zero recorded guests after exclusion",
-    "Zero-night records", "ADR at most one euro"
-  ),
-  Result = c(
-    nrow(hotels),
-    ncol(hotels),
-    sum(is.na(hotels)),
-    sum(duplicated(hotels)),
-    sum(duplicated(hotels) | duplicated(hotels, fromLast = TRUE)),
-    sum(with(
-      hotels,
-      stays_in_weekend_nights + stays_in_week_nights > 0 &
-        adults + children + babies == 0
-    )),
-    sum(with(hotels, stays_in_weekend_nights + stays_in_week_nights == 0)),
-    sum(hotels$adr <= 1)
-  )
-)
-
-knitr::kable(audit_results, align = c("l", "r"))
-
-stopifnot(nrow(hotels) == 72973L)
-stopifnot(ncol(hotels) == 24L)
-stopifnot(sum(is.na(hotels)) == 0L)
-stopifnot(all(hotels$adr > 0))
-```
-
-The audit makes the zero-recorded-guest exclusion explicit. Very low ADR observations remain in the preliminary model because a separate exclusion rule has not been adopted.
 
 # Variable coding
 
 ```{r variable-coding}
-month_levels <- month.name
-
-hotels$hotel <- factor(
-  hotels$hotel,
-  levels = c("City Hotel", "Resort Hotel")
-)
-hotels$arrival_date_year <- factor(
-  hotels$arrival_date_year,
-  levels = c(2015, 2016, 2017)
+hotels$hotel <- relevel(factor(hotels$hotel), ref = "City Hotel")
+hotels$arrival_date_year <- relevel(
+  factor(hotels$arrival_date_year),
+  ref = "2015"
 )
 hotels$arrival_date_month <- factor(
   hotels$arrival_date_month,
-  levels = month_levels
+  levels = month.name
 )
-hotels$meal <- factor(
-  hotels$meal,
-  levels = c("BB", "HB", "SC", "FB")
+hotels$meal <- relevel(factor(hotels$meal), ref = "BB")
+hotels$reserved_room_type <- relevel(
+  factor(hotels$reserved_room_type),
+  ref = "A"
 )
-hotels$reserved_room_type <- factor(
-  hotels$reserved_room_type,
-  levels = c("A", "B", "C", "D", "E", "F", "G", "H")
+hotels$market_segment <- relevel(
+  factor(hotels$market_segment),
+  ref = "Online TA"
 )
-hotels$market_segment <- factor(
-  hotels$market_segment,
-  levels = c(
-    "Online TA", "Offline TA/TO", "Direct", "Groups",
-    "Corporate", "Aviation", "Complementary"
-  )
-)
-hotels$customer_type <- factor(
-  hotels$customer_type,
-  levels = c("Transient", "Transient-Party", "Contract", "Group")
+hotels$customer_type <- relevel(
+  factor(hotels$customer_type),
+  ref = "Transient"
 )
 ```
 
-The reference categories are City Hotel, 2015, January, BB, reserved room A, Online TA, and Transient customer. Arrival year is included as an adjustment variable because prices may differ across the 2015--2017 observation period.
+The reference groups are City Hotel, 2015, January, BB meal, room type A, Online TA, and Transient customer.
 
-# Preliminary multiple linear regression
+# Preliminary model
 
-The model includes eleven predictor variables and the required interaction. `lead_time * hotel` expands to the two lower-order terms and `lead_time:hotel`.
+The model has eleven predictors. The interaction tests whether the association between lead time and ADR differs between the two hotels.
 
-```{r model-fit}
-working_formula <- adr ~
-  lead_time * hotel +
-  arrival_date_year +
-  arrival_date_month +
-  stays_in_weekend_nights +
-  stays_in_week_nights +
-  adults +
-  children +
-  meal +
-  reserved_room_type +
-  market_segment +
-  customer_type
-
-preliminary_model <- lm(working_formula, data = hotels)
+```{r model}
+preliminary_model <- lm(
+  adr ~ lead_time * hotel +
+    arrival_date_year + arrival_date_month +
+    stays_in_weekend_nights + stays_in_week_nights +
+    adults + children + meal + reserved_room_type +
+    market_segment + customer_type,
+  data = hotels
+)
 ```
 
-## Coefficient estimates and model fit
+## Model estimates
 
 ```{r coefficient-table}
-coefficient_matrix <- coef(summary(preliminary_model))
-confidence_intervals <- confint(preliminary_model, level = 0.95)
+model_coefs <- coef(summary(preliminary_model))
+model_ci <- confint(preliminary_model)
 
 coefficient_table <- data.frame(
-  Term = rownames(coefficient_matrix),
-  Estimate = coefficient_matrix[, "Estimate"],
-  Standard_Error = coefficient_matrix[, "Std. Error"],
-  Lower_95_CI = confidence_intervals[, 1],
-  Upper_95_CI = confidence_intervals[, 2],
-  p_value = coefficient_matrix[, "Pr(>|t|)"],
-  row.names = NULL,
-  check.names = FALSE
+  Term = rownames(model_coefs),
+  Estimate = model_coefs[, "Estimate"],
+  SE = model_coefs[, "Std. Error"],
+  Lower_95_CI = model_ci[, 1],
+  Upper_95_CI = model_ci[, 2],
+  row.names = NULL
 )
 
-numeric_columns <- c(
-  "Estimate", "Standard_Error", "Lower_95_CI", "Upper_95_CI"
-)
-coefficient_table[numeric_columns] <- lapply(
-  coefficient_table[numeric_columns],
-  function(x) round(x, 4)
-)
-coefficient_table$p_value <- format.pval(
-  coefficient_table$p_value,
-  digits = 4,
-  eps = 0.0001
-)
-
-knitr::kable(coefficient_table, align = c("l", rep("r", 5)))
+coefficient_table[, 2:5] <- round(coefficient_table[, 2:5], 4)
+knitr::kable(coefficient_table)
 ```
 
 ```{r model-fit-table}
 model_summary <- summary(preliminary_model)
-model_fit_table <- data.frame(
+
+fit_table <- data.frame(
   Measure = c(
-    "Observations", "Residual standard error", "R-squared",
-    "Adjusted R-squared", "Model degrees of freedom",
-    "Residual degrees of freedom"
+    "Observations",
+    "Residual standard error",
+    "R-squared",
+    "Adjusted R-squared"
   ),
   Value = c(
-    format(nobs(preliminary_model), big.mark = ",", scientific = FALSE),
-    sprintf("%.2f", sigma(preliminary_model)),
-    sprintf("%.4f", model_summary$r.squared),
-    sprintf("%.4f", model_summary$adj.r.squared),
-    as.character(length(coef(preliminary_model)) - 1L),
-    format(df.residual(preliminary_model), big.mark = ",", scientific = FALSE)
+    nobs(preliminary_model),
+    round(sigma(preliminary_model), 2),
+    round(model_summary$r.squared, 4),
+    round(model_summary$adj.r.squared, 4)
   )
 )
 
-knitr::kable(model_fit_table, align = c("l", "r"))
+knitr::kable(fit_table)
 ```
 
-## Lead-time slopes by property
+## Lead-time slopes
 
-```{r interaction-slopes}
-model_coefficients <- coef(preliminary_model)
-interaction_name <- "lead_time:hotelResort Hotel"
+```{r lead-time-slopes}
+model_estimates <- coef(preliminary_model)
+interaction_term <- "lead_time:hotelResort Hotel"
 
-city_lead_time_slope <- unname(model_coefficients["lead_time"])
-resort_lead_time_slope <- unname(
-  model_coefficients["lead_time"] + model_coefficients[interaction_name]
-)
+city_slope <- model_estimates["lead_time"]
+resort_slope <- city_slope + model_estimates[interaction_term]
 
 slope_table <- data.frame(
-  Property = c("Lisbon City Hotel", "Algarve Resort Hotel"),
-  Estimated_ADR_change_per_additional_lead_time_day = round(
-    c(city_lead_time_slope, resort_lead_time_slope),
-    4
-  )
+  Hotel = c("City Hotel", "Resort Hotel"),
+  Estimated_change_in_ADR = round(c(city_slope, resort_slope), 4)
 )
 
-knitr::kable(slope_table, align = c("l", "r"))
+knitr::kable(slope_table)
 ```
 
-The `lead_time` coefficient is the estimated mean ADR change for one additional lead-time day at the City Hotel, holding the adjustment variables fixed. The interaction coefficient is the Resort-minus-City difference between those slopes. The Resort Hotel slope is their sum. These estimates describe conditional associations, not causal effects.
+The lead-time coefficient is the estimated change in mean ADR for one additional day of lead time at the City Hotel, holding the other variables fixed. The interaction coefficient is the difference between the Resort Hotel and City Hotel slopes. These are associations, not causal effects.
 
-# Regression diagnostics
+# Residual diagnostics
 
-```{r diagnostic-objects, include=FALSE}
+```{r diagnostic-values, include=FALSE}
 fitted_values <- fitted(preliminary_model)
 standardized_residuals <- rstandard(preliminary_model)
-leverages <- hatvalues(preliminary_model)
+leverage_values <- hatvalues(preliminary_model)
 ```
 
-## Mean structure, constant variance, and normality
-
-```{r core-diagnostics, fig.width=12, fig.height=4.2, fig.cap="Core preliminary-model diagnostics: standardized residuals against fitted ADR, the residual distribution, and the normal QQ plot."}
+```{r main-diagnostics, fig.width=12, fig.height=4, fig.cap="Residual plots for linearity, constant variance, and normality."}
 old_par <- par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
 
 plot(
-  fitted_values, standardized_residuals,
-  xlab = "Fitted ADR (euros per night)",
-  ylab = "Standardized residual",
-  main = "Residuals vs fitted ADR",
-  pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.16)
-)
-abline(h = 0, col = "red", lwd = 2)
-
-hist(
+  fitted_values,
   standardized_residuals,
-  breaks = 50,
-  xlab = "Standardized residual",
-  main = "Residual distribution",
-  col = "grey85", border = "white"
+  xlab = "Fitted ADR",
+  ylab = "Standardized residual",
+  main = "Residuals vs fitted",
+  pch = 16,
+  cex = 0.3,
+  col = rgb(0, 0, 0, 0.15)
 )
-abline(v = 0, col = "red", lwd = 2)
+abline(h = 0, col = "red")
+
+plot(
+  fitted_values,
+  sqrt(abs(standardized_residuals)),
+  xlab = "Fitted ADR",
+  ylab = "Square root of |standardized residual|",
+  main = "Scale-location",
+  pch = 16,
+  cex = 0.3,
+  col = rgb(0, 0, 0, 0.15)
+)
 
 qqnorm(
   standardized_residuals,
-  main = "Normal QQ plot",
-  pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.16)
+  main = "Normal Q-Q",
+  pch = 16,
+  cex = 0.3,
+  col = rgb(0, 0, 0, 0.15)
 )
-qqline(standardized_residuals, col = "red", lwd = 2)
+qqline(standardized_residuals, col = "red")
 
 par(old_par)
 ```
 
-## Main predictor, hotel indicator, and leverage
-
-```{r targeted-diagnostics, fig.width=12, fig.height=4.2, fig.cap="Targeted diagnostics for the main predictor and hotel indicator, together with standardized residuals against leverage."}
-old_par <- par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
+```{r other-diagnostics, fig.width=10, fig.height=4, fig.cap="Residual plots for independence and unusual observations."}
+old_par <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
 
 plot(
-  hotels$lead_time, standardized_residuals,
-  xlab = "Lead time (days)",
-  ylab = "Standardized residual",
-  main = "Residuals vs lead time",
-  pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.16)
-)
-abline(h = 0, col = "red", lwd = 2)
-
-boxplot(
-  standardized_residuals ~ hotels$hotel,
-  xlab = "Property", ylab = "Standardized residual",
-  main = "Residuals by property"
-)
-abline(h = 0, col = "red", lwd = 2)
-
-plot(
-  leverages, standardized_residuals,
-  xlab = "Leverage", ylab = "Standardized residual",
-  main = "Residuals vs leverage",
-  pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.16)
-)
-abline(h = 0, col = "red", lwd = 2)
-
-par(old_par)
-```
-
-## Residuals in data order and calendar time
-
-```{r dependence-diagnostics, fig.width=12, fig.height=4.2, fig.cap="Dependence checks using the source-row order, reconstructed arrival date, and the residual autocorrelation function in source-row order."}
-old_par <- par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
-
-plot(
-  source_row_id, standardized_residuals,
-  xlab = "Source row order", ylab = "Standardized residual",
-  main = "Residuals in source order",
-  pch = 16, cex = 0.25, col = rgb(0, 0, 0, 0.14)
-)
-abline(h = 0, col = "red", lwd = 2)
-
-plot(
-  arrival_date, standardized_residuals,
-  xlab = "Arrival date", ylab = "Standardized residual",
-  main = "Residuals over arrival dates",
-  pch = 16, cex = 0.25, col = rgb(0, 0, 0, 0.14)
-)
-abline(h = 0, col = "red", lwd = 2)
-
-acf(
+  seq_along(standardized_residuals),
   standardized_residuals,
-  lag.max = 40,
-  main = "Residual ACF in source order"
+  xlab = "Observation order",
+  ylab = "Standardized residual",
+  main = "Residuals in data order",
+  pch = 16,
+  cex = 0.25,
+  col = rgb(0, 0, 0, 0.15)
 )
+abline(h = 0, col = "red")
+
+plot(
+  leverage_values,
+  standardized_residuals,
+  xlab = "Leverage",
+  ylab = "Standardized residual",
+  main = "Residuals vs leverage",
+  pch = 16,
+  cex = 0.3,
+  col = rgb(0, 0, 0, 0.15)
+)
+abline(h = 0, col = "red")
 
 par(old_par)
 ```
 
-## Other numerical predictors and selected factors
+## Assumption assessment
 
-```{r additional-diagnostics, fig.width=12, fig.height=7.5, fig.cap="Residual checks for the remaining numerical predictors and selected categorical adjustment variables."}
-old_par <- par(mfrow = c(2, 3), mar = c(6, 4, 3, 1))
+- **Linearity:** The residuals-versus-fitted plot shows a pattern, so the linear mean structure may not be adequate.
+- **Constant variance:** The residual spread changes with fitted ADR. This assumption does not appear reasonable.
+- **Normality:** The Q-Q plot departs from the line in the tails. Normality does not appear reasonable.
+- **Independence:** The residuals show runs in data order. However, row order is not the same as booking time, so independence cannot be confirmed from this plot alone.
+- **Unusual observations:** Some observations have large standardized residuals or high leverage. They should be checked later rather than automatically removed.
 
-numerical_predictors <- c(
-  "stays_in_weekend_nights", "stays_in_week_nights", "adults", "children"
-)
+The Part 1 analysis identifies these problems but does not correct them yet.
 
-for (variable in numerical_predictors) {
-  plot(
-    hotels[[variable]], standardized_residuals,
-    xlab = variable, ylab = "Standardized residual",
-    main = paste("Residuals vs", variable),
-    pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.16)
-  )
-  abline(h = 0, col = "red", lwd = 2)
-}
+# Preliminary result
 
-boxplot(
-  standardized_residuals ~ hotels$arrival_date_month,
-  las = 2, xlab = "Arrival month", ylab = "Standardized residual",
-  main = "Residuals by month"
-)
-abline(h = 0, col = "red", lwd = 2)
-
-boxplot(
-  standardized_residuals ~ hotels$customer_type,
-  las = 2, xlab = "Customer type", ylab = "Standardized residual",
-  main = "Residuals by customer type"
-)
-abline(h = 0, col = "red", lwd = 2)
-
-par(old_par)
-```
-
-# Preliminary assumption assessment
-
-| Assumption or condition | Preliminary assessment |
-|---|---|
-| Correct linear mean structure | Questionable. Residual-versus-fitted and residual-versus-lead-time plots show systematic structure; the large change in spread also makes the mean pattern harder to isolate. |
-| Uncorrelated errors | Not reasonable in the supplied source order. The ACF shows strong positive residual autocorrelation that persists across many lags, and the time plots contain long runs above or below zero. Bookings are also clustered within two properties and common arrival dates, while the data do not identify every repeat customer. |
-| Constant error variance | Not reasonable. Residual spread changes substantially across fitted ADR and forms a clear wedge/funnel pattern. |
-| Normally distributed errors | Not reasonable for this preliminary model. The residual histogram is right-skewed and the QQ plot departs substantially from the reference line, especially in the upper tail. |
-| No highly unusual observations | Potential unusual observations are present, including very large standardized residuals and a small high-leverage group. Source records should be checked; they should not be automatically deleted. |
-
-Per the Part 1 instructions, this file diagnoses rather than corrects the assumption violations. Transformations, nonlinear terms, alternative variance handling, and sensitivity analyses should be considered only after the group freezes the data-cleaning decisions.
-
-# Reproducibility information
-
-```{r reproducibility}
-sessionInfo()
-```
-
-# Reference
-
-Antonio, N., de Almeida, A., & Nunes, L. (2019). Hotel booking demand datasets. *Data in Brief, 22*, 41--49. https://doi.org/10.1016/j.dib.2018.11.126
+For the City Hotel, one additional day of lead time is associated with an estimated ADR change of `r round(city_slope, 4)` euros, holding the other predictors fixed. The estimated interaction is `r round(model_estimates[interaction_term], 4)`, so the corresponding Resort Hotel slope is `r round(resort_slope, 4)` euros per additional day. The model has an adjusted R-squared of `r round(model_summary$adj.r.squared, 4)`. Because several regression assumptions are questionable, these results should be treated as preliminary.
