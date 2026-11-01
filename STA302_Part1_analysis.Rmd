@@ -150,8 +150,9 @@ pairs(
     "Lead time", "Weekend nights", "Weekday nights",
     "Adults", "Children", "Special requests"
   ),
-  pch = ".",
-  col = rgb(0, 0, 0, 0.15)
+  pch = 16,
+  cex = 0.2,
+  col = rgb(0, 0, 0, 0.08)
 )
 ```
 
